@@ -1,19 +1,27 @@
 module top_module (input clk, input tx_start, output tx_pin, input rx_pin, output w_led_ale);
 
     reg [7:0] rx_char;
-    reg [7:0] tx_char = 8'h60;
+    reg [7:0] mem [3:0];
+    reg [7:0] tx_char;
+    reg [32:0] counter; 
+    reg [1:0] i;
+    reg [1:0] j;
+    reg go;
     wire [7:0] w_rx_char;
     reg[22:0] r_cnt_led_ale;
     wire w_rx_done;
-    reg r_rx_done;
-    wire w_slow_clk;
+    wire w_start_tx;
     reg r_tx_start;
 
-   start_tx_manag(.clk(clk),
-                  .slow_clk(w_slow_clk));
+   initial begin
+        mem[0] = 8'h61;
+        mem[1] = 8'h62;
+        mem[2] = 8'h63;
+        mem[3] = 8'h64;
+    end
 
     uart_tx ut (.clk(clk),
-                .start_tx(w_slow_clk), //tx_start),
+                .start_tx(w_start_tx),
                 .out(tx_pin),
                 .w_out_ff(tx_char));
 
@@ -25,29 +33,35 @@ module top_module (input clk, input tx_start, output tx_pin, input rx_pin, outpu
     always @(posedge clk)
     begin
        rx_char <= w_rx_char;
-       r_rx_done <= w_rx_done;
-       if (r_rx_done)
-        tx_char <= (tx_start ? tx_char + 1 : w_rx_char); 
-
+       if (w_rx_done)
+       begin
+         mem[i] <= w_rx_char;
+         i <= i + 1;
+         if (i == 3)
+            i <= 0;
+       end
        r_cnt_led_ale <= r_cnt_led_ale + 1;
     end
 
-    assign w_led_ale = r_cnt_led_ale[21];
-
-endmodule
-
-module start_tx_manag(input clk, output slow_clk);
-    reg [20:0] counter;
-    reg go;
     always @(posedge clk)
     begin
       counter <= counter + 1;
-      if (counter == 0)
+      if (counter == 27 * 1000 * 100)
+      begin
+        j <= j + 1;
+        if (j == 3)
+            j <= 0;
+        counter <= 0;
         go <= 1;
+        tx_char <= mem[j]; // 8'h2e; // mem[i]; // (tx_start ? tx_char + 1 : w_rx_char); 
+      end
       else
         go <= 0;
     end
-    assign slow_clk = go;
+
+    assign w_led_ale = r_cnt_led_ale[21];
+    assign w_start_tx = go;
+
 endmodule
 
 module uart_rx(input clk, output [7:0] rx_char, input rx_pin, output wo_rx_done);
