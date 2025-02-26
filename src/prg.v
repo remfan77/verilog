@@ -12,18 +12,21 @@ module top_module (input clk, input tx_start, output tx_pin, input rx_pin, outpu
     wire w_rx_done;
     wire w_start_tx;
     reg r_tx_start;
+    wire w_tx_complete;
 
    initial begin
         mem[0] = 8'h61;
         mem[1] = 8'h62;
         mem[2] = 8'h63;
         mem[3] = 8'h64;
+        go = 1'h1;
     end
 
     uart_tx ut (.clk(clk),
                 .start_tx(w_start_tx),
                 .out(tx_pin),
-                .w_out_ff(tx_char));
+                .w_out_ff(tx_char),
+                .w_tx_complete(w_tx_complete));
 
     uart_rx urx(.clk(clk),
                 .rx_char(w_rx_char),
@@ -45,18 +48,30 @@ module top_module (input clk, input tx_start, output tx_pin, input rx_pin, outpu
 
     always @(posedge clk)
     begin
-      counter <= counter + 1;
-      if (counter == 27 * 1000 * 100)
-      begin
-        j <= j + 1;
-        if (j == 3)
-            j <= 0;
-        counter <= 0;
-        go <= 1;
-        tx_char <= mem[j]; // 8'h2e; // mem[i]; // (tx_start ? tx_char + 1 : w_rx_char); 
-      end
-      else
-        go <= 0;
+      // counter <= counter + 1;
+      // if (counter == 27 * 1000 * 100)
+      // begin
+        if (w_tx_complete)
+        begin
+          j <= j + 1;
+          if (j == 3)
+             j <= 0;
+          go <= 1;
+          tx_char <= mem[j];
+        end
+        else
+        begin
+          go <= 0;
+        end
+        
+          
+       
+        // counter <= 0;
+       
+
+      // end
+      // else
+      //  go <= 0;
     end
 
     assign w_led_ale = r_cnt_led_ale[21];
@@ -102,18 +117,21 @@ module uart_rx(input clk, output [7:0] rx_char, input rx_pin, output wo_rx_done)
      assign wo_rx_done = r_rx_done;
 endmodule
 
-module uart_tx(input clk, input start_tx, output out, input [7:0] w_out_ff);
+module uart_tx(input clk, input start_tx, output out, input [7:0] w_out_ff, output w_tx_complete);
     reg[7:0] out_ff;
     reg[4:0] counter = 0;
     reg tx;
     reg [31:0] t;
     reg [31:0] t_sampling;
+    reg r_tx_complete;
    
     always @(posedge clk)
         begin
             t <= t + 1;
             case (counter)
-            0: if (start_tx)
+            0: begin
+               r_tx_complete <= 0;
+               if (start_tx)
                begin
                   tx <= 0;
                   counter <= 1;
@@ -122,28 +140,38 @@ module uart_tx(input clk, input start_tx, output out, input [7:0] w_out_ff);
                end
                else
                   tx <= 1;  // idle
+               end
 
             1,2,3,4,5,6,7,8:
-                    if (t == t_sampling)
+                  begin
+                  r_tx_complete <= 0;  
+                  if (t == t_sampling)
                     begin
                       tx <= out_ff[0];
-                   out_ff <= out_ff >> 1;
+                      out_ff <= out_ff >> 1;
                       counter <= counter + 4'h01;
                       t_sampling <= t + 117 * 2;
                     end
-            9: if (t == t_sampling)
+                  end
+            9:  begin
+                r_tx_complete <= 0;
+                if (t == t_sampling)
                 begin
                      tx <= 1; // bit di stop
                      counter <= 10;
                      t_sampling <= t + 117 * 2;
                 end
+                end
            10: if (t == t_sampling)
                 begin
                      counter <= 0;
+                     r_tx_complete <= 1;
                 end
+                else
+                     r_tx_complete <= 0;
             endcase
         end
    
     assign out = tx;
-
+    assign w_tx_complete = r_tx_complete;
 endmodule
